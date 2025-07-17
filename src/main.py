@@ -98,12 +98,12 @@ class AprovacaoView(discord.ui.View):
         return user.guild_permissions.administrator or user.id in MOD_IDS
 
     @discord.ui.button(label="✅ Aprovar", style=discord.ButtonStyle.success)
-    async def aprovar(self, interaction: discord.Interaction, button: discord.ui.Button): # type: ignore
+    async def aprovar(self, interaction: discord.Interaction, button: discord.ui.Button):  # type: ignore
         if interaction.guild is None:
             await interaction.response.send_message("Essa interação só funciona em servidores!", ephemeral=True)
             return
 
-        if not self._is_admin(interaction.user): # type: ignore
+        if not self._is_admin(interaction.user):  # type: ignore
             await interaction.response.send_message("❌ Você não tem permissão para isso.", ephemeral=True)
             return
 
@@ -125,15 +125,23 @@ class AprovacaoView(discord.ui.View):
                 canal = None
 
         if content_id is None:
-            await interaction.response.edit_message(content="Erro inesperado: o ID do conteúdo não está definido.", view=None)
+            await interaction.response.edit_message(content="Erro inesperado: o ID do conteúdo não está definido.",
+                                                    view=None)
             return
 
         if canal is not None:
             view = ConsumirView(content_id, self.autor_id, self.custo)
-            await canal.send( # type: ignore
+            msg = await canal.send(  # type: ignore
                 f"📦 Novo conteúdo disponível: **{self.titulo}**\nAutor: <@{self.autor_id}>\nClique abaixo para consumir (-{self.custo} pontos).",
                 view=view
             )
+
+            # SALVAR message_id e channel_id no banco
+            cursor.execute(
+                "UPDATE contents SET message_id = ?, channel_id = ? WHERE id = ?",
+                (msg.id, canal.id, content_id)
+            )
+            conn.commit()
 
         await interaction.response.edit_message(content="✅ Conteúdo aprovado e publicado!", view=None)
 
@@ -239,12 +247,20 @@ class EditarConteudoModal(discord.ui.Modal, title="✏️ Editar Conteúdo Pende
         await interaction.response.send_message("✏️ Conteúdo editado com sucesso.", ephemeral=True)
 
 # ===================== COMANDOS =====================
-@bot.event
 async def on_ready():
     print(f"🤖 Bot online: {bot.user}")
-    cursor.execute("SELECT id, author_id, custo FROM contents")
-    for content_id, author_id, custo in cursor.fetchall():
-        bot.add_view(ConsumirView(content_id, author_id, custo))
+
+    cursor.execute("SELECT id, author_id, custo, channel_id, message_id FROM contents WHERE message_id IS NOT NULL AND channel_id IS NOT NULL")
+    for content_id, author_id, custo, channel_id, message_id in cursor.fetchall():
+        view = ConsumirView(content_id, author_id, custo)
+        bot.add_view(view)
+
+        try:
+            canal = bot.get_channel(channel_id) or await bot.fetch_channel(channel_id)
+            msg = await canal.fetch_message(message_id)
+            await msg.edit(view=view)
+        except Exception as e:
+            print(f"[!] Erro ao reanexar View à mensagem {message_id}: {e}")
 
 @bot.command(name="help")
 async def help(ctx: commands.Context[commands.Bot]):
@@ -469,16 +485,22 @@ async def reenviar_posts(ctx: commands.Context[commands.Bot]):
         await ctx.send("❌ Você não tem permissão para usar este comando.")
         return
 
-    cursor.execute("SELECT id, author_id, title, content, custo FROM contents ORDER BY id ASC")
+    # Buscar somente conteúdos que ainda não foram enviados (sem message_id)
+    cursor.execute("""
+        SELECT id, author_id, title, content, custo
+        FROM contents
+        WHERE message_id IS NULL OR channel_id IS NULL
+        ORDER BY id ASC
+    """)
     posts = cursor.fetchall()
 
     if not posts:
-        await ctx.send("⚠️ Nenhum conteúdo encontrado.")
+        await ctx.send("⚠️ Nenhum conteúdo pendente para reenviar.")
         return
 
     await ctx.send(f"🔁 Reenviando {len(posts)} conteúdos aprovados...")
 
-    for content_id, author_id, title, _, custo in posts:
+    for content_id, author_id, title, content, custo in posts:
         view = ConsumirView(content_id, author_id, custo)
         bot.add_view(view)
 
@@ -492,9 +514,18 @@ async def reenviar_posts(ctx: commands.Context[commands.Bot]):
         embed.set_footer(text=f"ID: {content_id}")
 
         try:
-            await ctx.send(embed=embed, view=view)
+            msg = await ctx.send(embed=embed, view=view)
+
+            # Salvar message_id e channel_id no banco
+            cursor.execute(
+                "UPDATE contents SET message_id = ?, channel_id = ? WHERE id = ?",
+                (msg.id, ctx.channel.id, content_id)
+            )
+            conn.commit()
+
         except Exception as e:
             await ctx.send(f"⚠️ Erro ao reenviar conteúdo ID {content_id}: {e}")
+
 
 @bot.command(name="ranking")
 async def ranking(ctx: commands.Context[commands.Bot]):
