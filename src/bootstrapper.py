@@ -7,11 +7,7 @@ REPO = "rewardbot"
 BRANCH = "main"
 CHECK_INTERVAL = 60  # em segundos
 
-# Guarda o último commit conhecido
-ultimo_commit = None
-
-async def checar_commits():
-    global ultimo_commit
+async def get_last_commit() -> str | None:
     url = f"https://api.github.com/repos/{OWNER}/{REPO}/commits/{BRANCH}"
     headers = {
         "Accept": "application/vnd.github+json",
@@ -26,18 +22,37 @@ async def checar_commits():
 
             data = await resp.json()
             commit_sha = data["sha"]
+            return commit_sha
 
-            if ultimo_commit is None:
-                ultimo_commit = commit_sha
-                print("Inicializado com commit:", commit_sha)
-            elif commit_sha != ultimo_commit:
-                print("Repositório atualizado!")
-                ultimo_commit = commit_sha
-                # Aqui você pode colocar lógica pra reiniciar o bot ou baixar o novo código
+async def git_pull():
+    proc = await asyncio.create_subprocess_exec(
+        "git", "pull",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+
+    stdout, stderr = await proc.communicate()
+
+    if proc.returncode == 0:
+        print("Git pull concluído:")
+        print(stdout.decode())
+    else:
+        print("Erro ao executar git pull:")
+        print(stderr.decode())
 
 async def loop_verificacao():
+    last_commit = await get_last_commit()
+    if last_commit is None:
+        return
+
     while True:
-        await checar_commits()
+        current_commit = await get_last_commit()
+        if current_commit == last_commit:
+            await asyncio.sleep(CHECK_INTERVAL)
+            continue
+
+        await git_pull()
+        last_commit = current_commit
         await asyncio.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
