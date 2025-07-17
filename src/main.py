@@ -1,8 +1,12 @@
 import os
-from datetime import datetime
-import discord
-from discord.ext import commands
+
+from dotenv import load_dotenv
+load_dotenv()
+
 import sqlite3
+import discord
+from datetime import datetime
+from discord.ext import commands
 
 # ===================== CONFIGURAÇÕES =====================
 TOKEN = os.environ.get("TOKEN")
