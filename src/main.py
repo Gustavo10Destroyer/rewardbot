@@ -26,21 +26,21 @@ cursor = conn.cursor()
 conn.commit()
 
 # ===================== FUNÇÕES =====================
-def add_points(user_id, amount):
+def add_points(user_id: int, amount: int):
     cursor.execute("INSERT OR IGNORE INTO users (user_id, points) VALUES (?, 0)", (user_id,))
     cursor.execute("UPDATE users SET points = points + ? WHERE user_id = ?", (amount, user_id))
     conn.commit()
 
-def get_points(user_id):
+def get_points(user_id: int) -> int:
     cursor.execute("SELECT points FROM users WHERE user_id = ?", (user_id,))
     res = cursor.fetchone()
     return res[0] if res else 0
 
-def has_consumed(user_id, content_id):
+def has_consumed(user_id: int, content_id: int):
     cursor.execute("SELECT 1 FROM consumptions WHERE user_id = ? AND content_id = ?", (user_id, content_id))
     return cursor.fetchone() is not None
 
-def register_consumption(user_id, content_id):
+def register_consumption(user_id: int, content_id: int):
     cursor.execute("INSERT OR IGNORE INTO consumptions (user_id, content_id) VALUES (?, ?)", (user_id, content_id))
     conn.commit()
 
@@ -94,12 +94,16 @@ class AprovacaoView(discord.ui.View):
         embed.set_footer(text="Use os botões abaixo para aprovar, editar ou rejeitar.")
         return embed
 
-    def _is_admin(self, user_id: int) -> bool:
-        return user_id in MOD_IDS
+    def _is_admin(self, user: discord.Member) -> bool:
+        return user.guild_permissions.administrator or user.id in MOD_IDS
 
     @discord.ui.button(label="✅ Aprovar", style=discord.ButtonStyle.success)
-    async def aprovar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self._is_admin(interaction.user.id):
+    async def aprovar(self, interaction: discord.Interaction, button: discord.ui.Button): # type: ignore
+        if interaction.guild is None:
+            await interaction.response.send_message("Essa interação só funciona em servidores!", ephemeral=True)
+            return
+
+        if not self._is_admin(interaction.user): # type: ignore
             await interaction.response.send_message("❌ Você não tem permissão para isso.", ephemeral=True)
             return
 
@@ -120,9 +124,13 @@ class AprovacaoView(discord.ui.View):
             except Exception:
                 canal = None
 
+        if content_id is None:
+            await interaction.response.edit_message(content="Erro inesperado: o ID do conteúdo não está definido.", view=None)
+            return
+
         if canal is not None:
             view = ConsumirView(content_id, self.autor_id, self.custo)
-            await canal.send(
+            await canal.send( # type: ignore
                 f"📦 Novo conteúdo disponível: **{self.titulo}**\nAutor: <@{self.autor_id}>\nClique abaixo para consumir (-{self.custo} pontos).",
                 view=view
             )
@@ -130,8 +138,8 @@ class AprovacaoView(discord.ui.View):
         await interaction.response.edit_message(content="✅ Conteúdo aprovado e publicado!", view=None)
 
     @discord.ui.button(label="✏️ Editar", style=discord.ButtonStyle.secondary)
-    async def editar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self._is_admin(interaction.user.id):
+    async def editar(self, interaction: discord.Interaction, button: discord.ui.Button): # type: ignore
+        if not self._is_admin(interaction.user): # type: ignore
             await interaction.response.send_message("❌ Você não tem permissão para isso.", ephemeral=True)
             return
 
@@ -139,8 +147,8 @@ class AprovacaoView(discord.ui.View):
         await interaction.response.send_modal(modal)
 
     @discord.ui.button(label="❌ Rejeitar", style=discord.ButtonStyle.danger)
-    async def rejeitar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self._is_admin(interaction.user.id):
+    async def rejeitar(self, interaction: discord.Interaction, button: discord.ui.Button): # type: ignore
+        if not self._is_admin(interaction.user): # type: ignore
             await interaction.response.send_message("❌ Você não tem permissão para isso.", ephemeral=True)
             return
 
@@ -153,18 +161,18 @@ class EditarModal(discord.ui.Modal, title="✏️ Editar Conteúdo"):
         super().__init__()
         self.view_ref = aprovacao_view
 
-        self.titulo_input = discord.ui.TextInput(
+        self.titulo_input: discord.ui.TextInput["EditarModal"] = discord.ui.TextInput(
             label="Novo Título",
             default=aprovacao_view.titulo,
             max_length=100
         )
-        self.conteudo_input = discord.ui.TextInput(
+        self.conteudo_input: discord.ui.TextInput["EditarModal"] = discord.ui.TextInput(
             label="Novo Conteúdo",
             default=aprovacao_view.conteudo,
             style=discord.TextStyle.paragraph,
             max_length=2000
         )
-        self.custo_input = discord.ui.TextInput(
+        self.custo_input: discord.ui.TextInput["EditarModal"] = discord.ui.TextInput(
             label="Custo do Poste (pontos)",
             default=str(aprovacao_view.custo),
             max_length=5  # Ajuste conforme quiser
@@ -190,7 +198,7 @@ class EditarModal(discord.ui.Modal, title="✏️ Editar Conteúdo"):
 
         # Atualiza embed da mensagem com custo atualizado
         try:
-            await interaction.message.edit(embed=self.view_ref.to_embed(), view=self.view_ref)
+            await interaction.message.edit(embed=self.view_ref.to_embed(), view=self.view_ref) # type: ignore
         except Exception as e:
             print(f"Erro ao atualizar mensagem de aprovação: {e}")
 
@@ -205,9 +213,9 @@ class EditarConteudoModal(discord.ui.Modal, title="✏️ Editar Conteúdo Pende
         super().__init__()
         self.pending_id = pending_id
 
-        self.titulo = discord.ui.TextInput(label="Título", default=titulo, max_length=100)
-        self.conteudo = discord.ui.TextInput(label="Conteúdo", default=conteudo, style=discord.TextStyle.paragraph, max_length=2000)
-        self.custo = discord.ui.TextInput(label="Custo (pontos)", default=str(custo))
+        self.titulo: discord.ui.TextInput["EditarConteudoModal"] = discord.ui.TextInput(label="Título", default=titulo, max_length=100)
+        self.conteudo: discord.ui.TextInput["EditarConteudoModal"] = discord.ui.TextInput(label="Conteúdo", default=conteudo, style=discord.TextStyle.paragraph, max_length=2000)
+        self.custo: discord.ui.TextInput["EditarConteudoModal"] = discord.ui.TextInput(label="Custo (pontos)", default=str(custo))
 
         self.add_item(self.titulo)
         self.add_item(self.conteudo)
@@ -230,7 +238,6 @@ class EditarConteudoModal(discord.ui.Modal, title="✏️ Editar Conteúdo Pende
 
         await interaction.response.send_message("✏️ Conteúdo editado com sucesso.", ephemeral=True)
 
-
 # ===================== COMANDOS =====================
 @bot.event
 async def on_ready():
@@ -240,7 +247,7 @@ async def on_ready():
         bot.add_view(ConsumirView(content_id, author_id, custo))
 
 @bot.command(name="help")
-async def help(ctx):
+async def help(ctx: commands.Context[commands.Bot]):
     embed = discord.Embed(
         title="📚 Ajuda do Bot",
         description="Lista de comandos disponíveis:",
@@ -280,12 +287,12 @@ async def help(ctx):
     await ctx.send(embed=embed)
 
 @bot.command()
-async def pontos(ctx):
+async def pontos(ctx: commands.Context[commands.Bot]):
     pts = get_points(ctx.author.id)
     await ctx.send(f"{ctx.author.mention}, você tem **{pts} pontos**.")
 
 @bot.command(name="ponto")
-async def ponto(ctx, id: int, valor: int):
+async def ponto(ctx: commands.Context[commands.Bot], id: int, valor: int):
     if ctx.author.id not in MOD_IDS:
         await ctx.send("❌ Você não tem permissão para usar este comando.")
         return
@@ -309,7 +316,7 @@ async def ponto(ctx, id: int, valor: int):
     await ctx.send(embed=embed)
 
 @bot.command()
-async def last(ctx):
+async def last(ctx: commands.Context[commands.Bot]):
     if ctx.author.id not in MOD_IDS:
         await ctx.send("❌ Você não tem permissão para usar este comando.")
         return
@@ -341,10 +348,10 @@ async def last(ctx):
 
         # 2. Formatar data
         try:
-            consumed_at = datetime.datetime.fromisoformat(consumed_at)
-            consumed_str = consumed_at.strftime('%d/%m/%Y %H:%M')
+            consumed_at = datetime.datetime.fromisoformat(consumed_at) # type: ignore
+            consumed_str = consumed_at.strftime('%d/%m/%Y %H:%M') # type: ignore
         except Exception:
-            consumed_str = str(consumed_at)
+            consumed_str = str(consumed_at) # type: ignore
 
         # 3. Montar mensagem
         msg += f"- {nome} consumiu [{content_id}] **{title}** em {consumed_str}\n"
@@ -353,7 +360,7 @@ async def last(ctx):
 
 
 @bot.command()
-async def postar(ctx, titulo: str, *, conteudo: str):
+async def postar(ctx: commands.Context[commands.Bot], titulo: str, *, conteudo: str):
     # ✅ Validação básica
     if len(titulo) > 100:
         await ctx.send("❌ O título é muito longo (máx. 100 caracteres).")
@@ -386,7 +393,7 @@ async def postar(ctx, titulo: str, *, conteudo: str):
     embed.set_footer(text="Use os botões abaixo para aprovar, editar ou rejeitar.")
 
     try:
-        await mod_channel.send(embed=embed, view=view)
+        await mod_channel.send(embed=embed, view=view) # type: ignore
     except discord.Forbidden:
         await ctx.send("❌ Não tenho permissão para enviar mensagens no canal de moderação.")
         return
@@ -406,7 +413,7 @@ async def postar(ctx, titulo: str, *, conteudo: str):
 
 @bot.listen("on_interaction")
 async def consumir_button(interaction: discord.Interaction):
-    custom_id = interaction.data.get("custom_id", "")
+    custom_id = interaction.data.get("custom_id", "") # type: ignore
     if not custom_id.startswith("consumir_button_"):
         return
 
@@ -457,7 +464,7 @@ async def consumir_button(interaction: discord.Interaction):
     )
 
 @bot.command()
-async def reenviar_posts(ctx):
+async def reenviar_posts(ctx: commands.Context[commands.Bot]):
     if ctx.author.id not in MOD_IDS:
         await ctx.send("❌ Você não tem permissão para usar este comando.")
         return
@@ -471,7 +478,7 @@ async def reenviar_posts(ctx):
 
     await ctx.send(f"🔁 Reenviando {len(posts)} conteúdos aprovados...")
 
-    for content_id, author_id, title, content_text, custo in posts:
+    for content_id, author_id, title, _, custo in posts:
         view = ConsumirView(content_id, author_id, custo)
         bot.add_view(view)
 
@@ -490,7 +497,7 @@ async def reenviar_posts(ctx):
             await ctx.send(f"⚠️ Erro ao reenviar conteúdo ID {content_id}: {e}")
 
 @bot.command(name="ranking")
-async def ranking(ctx):
+async def ranking(ctx: commands.Context[commands.Bot]):
     cursor.execute("SELECT user_id, points FROM users ORDER BY points DESC LIMIT 10")
     top_users = cursor.fetchall()
 
@@ -520,4 +527,13 @@ async def ranking(ctx):
     await ctx.send(embed=embed)
 
 # ===================== INICIAR BOT =====================
-bot.run(TOKEN)
+def main() -> None:
+    if TOKEN is None:
+        print("[ERR!] Você precisa fornecer um TOKEN via .env. Segue um exemplo:")
+        print(f"  TOKEN=MTA...")
+        return
+
+    bot.run(TOKEN)
+
+if __name__ == '__main__':
+    main()
