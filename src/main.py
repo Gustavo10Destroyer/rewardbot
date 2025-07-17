@@ -1,14 +1,15 @@
 import os
+from datetime import datetime
 import discord
-import sqlite3
 from discord.ext import commands
+import sqlite3
 
 # ===================== CONFIGURAÇÕES =====================
 TOKEN = os.environ.get("TOKEN")
 CUSTO_PADRAO = 5
 GANHO_RECOMPENSA = 5
-MOD_IDS = [591773451560419338, 1280365315519152203]
-MOD_CHANNEL_ID = 1393437897381777409
+MOD_IDS = [591773451560419338, 1280365315519152203, 428154578932858880]
+MOD_CHANNEL_ID = 1387926300005503089
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -234,6 +235,8 @@ async def on_ready():
     for content_id, author_id, custo in cursor.fetchall():
         bot.add_view(ConsumirView(content_id, author_id, custo))
 
+
+
 @bot.command()
 async def pontos(ctx):
     pts = get_points(ctx.author.id)
@@ -264,6 +267,50 @@ async def ponto(ctx, id: int, valor: int):
     await ctx.send(embed=embed)
 
 @bot.command()
+async def last(ctx):
+    if ctx.author.id not in MOD_IDS:
+        await ctx.send("❌ Você não tem permissão para usar este comando.")
+        return
+
+    query = """
+        SELECT c.user_id, c.content_id, ct.title, c.consumed_at
+        FROM consumptions c
+        JOIN contents ct ON c.content_id = ct.id
+        ORDER BY c.consumed_at DESC
+        LIMIT 10;
+    """
+
+    cursor.execute(query)
+    rows = cursor.fetchall()
+
+    if not rows:
+        await ctx.send("Nenhum consumo registrado.")
+        return
+
+    msg = "**Últimos 10 consumos registrados:**\n"
+
+    for user_id, content_id, title, consumed_at in rows:
+        # 1. Tenta buscar o nome do usuário
+        try:
+            user = await bot.fetch_user(user_id)
+            nome = f"{user.mention} ({user.name})"
+        except Exception:
+            nome = f"ID: {user_id}"
+
+        # 2. Formatar data
+        try:
+            consumed_at = datetime.datetime.fromisoformat(consumed_at)
+            consumed_str = consumed_at.strftime('%d/%m/%Y %H:%M')
+        except Exception:
+            consumed_str = str(consumed_at)
+
+        # 3. Montar mensagem
+        msg += f"- {nome} consumiu [{content_id}] **{title}** em {consumed_str}\n"
+
+    await ctx.send(msg)
+
+
+@bot.command()
 async def postar(ctx, titulo: str, *, conteudo: str):
     # ✅ Validação básica
     if len(titulo) > 100:
@@ -283,7 +330,7 @@ async def postar(ctx, titulo: str, *, conteudo: str):
             await ctx.send("❌ Canal de moderação não encontrado.")
             return
 
-    # passamos o canal original como argumento
+    # ⬇️ ✅ Agora passamos o canal original como argumento
     view = AprovacaoView(titulo, conteudo, ctx.author.id, ctx.channel.id, custo=CUSTO_PADRAO)
 
     embed = discord.Embed(
@@ -337,28 +384,28 @@ async def consumir_button(interaction: discord.Interaction):
     author_id, content_text, custo = row
     user_id = interaction.user.id
 
-    #  Autor sempre vê gratuitamente
+    # ✅ Autor sempre vê gratuitamente
     if user_id == author_id:
         await interaction.response.send_message(
             f"📘 Conteúdo (autor):\n{content_text}", ephemeral=True
         )
         return
 
-    # Se já consumiu, mostra de novo (sem cobrar)
+    # ✅ Se já consumiu, mostra de novo (sem cobrar)
     if has_consumed(user_id, content_id):
         await interaction.response.send_message(
             f"📘 Conteúdo já consumido:\n{content_text}", ephemeral=True
         )
         return
 
-    #  Verifica pontos
+    # ❌ Verifica pontos
     if get_points(user_id) < custo:
         await interaction.response.send_message(
             f"❌ Pontos insuficientes. Você precisa de {custo} pontos.", ephemeral=True
         )
         return
 
-    # Cobra pontos e registra consumo
+    # 💸 Cobra pontos e registra consumo
     add_points(user_id, -custo)
     register_consumption(user_id, content_id)
 
