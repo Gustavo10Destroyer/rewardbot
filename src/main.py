@@ -13,11 +13,11 @@ TOKEN = os.environ.get("TOKEN")
 CUSTO_PADRAO = 5
 GANHO_RECOMPENSA = 5
 MOD_IDS = [591773451560419338, 1280365315519152203, 428154578932858880] #cca469,rick,gusta
-MOD_CHANNEL_ID = 1387926300005503089 #canal priv8
+MOD_CHANNEL_ID = 1387926300005503089 #  priv8 #registros
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 # ===================== BANCO DE DADOS =====================
 conn = sqlite3.connect("priv8.db")
@@ -239,7 +239,45 @@ async def on_ready():
     for content_id, author_id, custo in cursor.fetchall():
         bot.add_view(ConsumirView(content_id, author_id, custo))
 
-
+@bot.command(name="help")
+async def help(ctx):
+    embed = discord.Embed(
+        title="📚 Ajuda do Bot",
+        description="Lista de comandos disponíveis:",
+        color=discord.Color.blue()
+    )
+    embed.add_field(
+        name="🪙 !pontos",
+        value="Veja quantos pontos você tem.",
+        inline=False
+    )
+    embed.add_field(
+        name="📦 !postar <título> <conteúdo>",
+        value="Envia um conteúdo para aprovação dos moderadores.\nEx: !postar ''conta premium'' user:admin senha:123 ",
+        inline=False
+    )
+    embed.add_field(
+        name="📈 !ranking",
+        value="Exibe o ranking dos 10 usuários com mais pontos.",
+        inline=False
+    )
+    embed.add_field(
+        name="🛠️ !ponto <id> <valor>",
+        value="**(Mod)** Adiciona ou remove pontos de um usuário.\nEx: `!ponto 123456789 10`",
+        inline=False
+    )
+    embed.add_field(
+        name="🔁 !reenviar_posts",
+        value="**(Mod)** Reenvia todos os conteúdos já aprovados com botões de consumo.",
+        inline=False
+    )
+    embed.add_field(
+        name="📜 !last",
+        value="**(Mod)** Mostra os últimos 10 consumos registrados.",
+        inline=False
+    )
+    embed.set_footer(text="Comandos com **(Mod)** são disponíveis apenas para a administração")
+    await ctx.send(embed=embed)
 
 @bot.command()
 async def pontos(ctx):
