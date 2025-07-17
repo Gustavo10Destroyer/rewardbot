@@ -3,7 +3,7 @@ import asyncio
 
 # Configurações
 OWNER = "Gustavo10Destroyer"
-REPO = "socket2"
+REPO = "rewardbot"
 BRANCH = "main"
 CHECK_INTERVAL = 60  # em segundos
 
